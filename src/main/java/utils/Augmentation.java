@@ -1,4 +1,4 @@
-package demo;
+package utils;
 
 import java.util.Random;
 
@@ -15,7 +15,7 @@ import java.util.Random;
  * <p>Typical use, creating 4 augmented copies of every training image:</p>
  * <pre>{@code
  * Random rng = new Random(1);
- * demo.Augmentation.Dataset aug = demo.Augmentation.augmentDataset(xTrain, tTrain, 4, rng);
+ * utils.Augmentation.Dataset aug = utils.Augmentation.augmentDataset(xTrain, tTrain, 4, rng);
  * // aug.x and aug.t contain the originals followed by the augmented copies
  * }</pre>
  *

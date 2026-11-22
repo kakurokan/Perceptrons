@@ -1,4 +1,4 @@
-package demo;
+package utils;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -17,13 +17,13 @@ import java.util.Random;
  *
  * <p>Typical use:</p>
  * <pre>{@code
- * double[][] x = demo.CsvUtils.clip01(demo.CsvUtils.readMatrix("dataset.csv"));
- * double[]   t = demo.CsvUtils.encodeLabels(demo.CsvUtils.readLabels("labels.csv"));
- * int[][] split = demo.CsvUtils.trainValidationSplit(x.length, 0.8, new Random(42));
- * double[][] xTrain = demo.CsvUtils.selectRows(x, split[0]);
- * double[]   tTrain = demo.CsvUtils.selectRows(t, split[0]);
- * double[][] xVal   = demo.CsvUtils.selectRows(x, split[1]);
- * double[]   tVal   = demo.CsvUtils.selectRows(t, split[1]);
+ * double[][] x = utils.CsvUtils.clip01(utils.CsvUtils.readMatrix("dataset.csv"));
+ * double[]   t = utils.CsvUtils.encodeLabels(utils.CsvUtils.readLabels("labels.csv"));
+ * int[][] split = utils.CsvUtils.trainValidationSplit(x.length, 0.8, new Random(42));
+ * double[][] xTrain = utils.CsvUtils.selectRows(x, split[0]);
+ * double[]   tTrain = utils.CsvUtils.selectRows(t, split[0]);
+ * double[][] xVal   = utils.CsvUtils.selectRows(x, split[1]);
+ * double[]   tVal   = utils.CsvUtils.selectRows(t, split[1]);
  * }</pre>
  *
  * <p>All methods are static; the class cannot be instantiated.</p>
