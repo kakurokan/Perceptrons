@@ -269,6 +269,51 @@ public final class CsvUtils {
         }
     }
 
+    /**
+     * Writes the weights of a perceptron to a file, one weight per line, starting with w0.
+     * The values are written with full precision, so {@link #readWeights} gives back exactly
+     * the same weights.
+     *
+     * @param path    output file, e.g. {@code "weights.csv"}
+     * @param weights weights w0, w1, ..., wn
+     * @throws IOException if the file cannot be written
+     */
+    public static void writeWeights(String path, double[] weights) throws IOException {
+        try (BufferedWriter out = Files.newBufferedWriter(Paths.get(path), StandardCharsets.UTF_8)) {
+            for (double w : weights) {
+                out.write(Double.toString(w));
+                out.newLine();
+            }
+        }
+    }
+
+    /**
+     * Reads the weights written by {@link #writeWeights}. A file with all the weights on a
+     * single line, separated by commas, is also accepted.
+     *
+     * @param path weights file
+     * @return weights w0, w1, ..., wn
+     * @throws IOException              if the file cannot be read
+     * @throws IllegalArgumentException if the file is empty or is not a single row or column
+     */
+    public static double[] readWeights(String path) throws IOException {
+        double[][] m = readMatrix(path);
+        if (m.length == 0) {
+            throw new IllegalArgumentException(path + ": no weights found");
+        }
+        if (m.length == 1) {
+            return m[0];                       // all weights on one line
+        }
+        if (m[0].length != 1) {
+            throw new IllegalArgumentException(path + ": expected one weight per line or all on one line");
+        }
+        double[] w = new double[m.length];
+        for (int i = 0; i < m.length; i++) {
+            w[i] = m[i][0];
+        }
+        return w;
+    }
+
     private static boolean isNumeric(String s) {
         try {
             Double.parseDouble(s);
