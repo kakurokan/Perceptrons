@@ -16,11 +16,16 @@ import java.util.*;
  * perceptrão para cada combinação de seed, número de cópias aumentadas por imagem, taxa de
  * aprendizagem inicial e decaimento (em épocas). Todos os treinos usam a mesma validação.
  * <p>
+ * A validação é também aumentada uma vez (3 cópias de cada imagem, com seed fixa) para medir
+ * a robustez do perceptrão. Essa validação aumentada nunca é usada para treinar nem para
+ * escolher o melhor perceptrão.
+ * <p>
  * Ficheiros escritos no diretório atual:
  * <ul>
- *   <li>{@code results.csv}: uma linha por treino;</li>
- *   <li>{@code summary.csv}: média e desvio-padrão de cada configuração sobre as seeds,
- *       ordenado por MSE de validação médio;</li>
+ *   <li>{@code results.csv}: uma linha por treino, com MSE de validação e exatidão na
+ *       validação e na validação aumentada;</li>
+ *   <li>{@code summary.csv}: média e desvio-padrão de cada configuração sobre as seeds
+ *       (MSE de validação, exatidão e exatidão aumentada), ordenado por MSE de validação médio;</li>
  *   <li>{@code weights.csv}: pesos do melhor perceptrão, lidos depois por {@link KaggleSubmission};</li>
  *   <li>{@code mse.csv}: MSE de treino e de validação por época do melhor treino.</li>
  * </ul>
@@ -33,6 +38,13 @@ import java.util.*;
  * </pre>
  */
 public final class Experiments {
+
+    /** Número máximo de épocas de cada treino. */
+    private static final int MAX_EPOCHS = 200;
+    /** Número de épocas seguidas sem melhoria no MSE de validação até parar o treino. */
+    private static final int PATIENCE = 20;
+    /** Descida mínima do MSE de validação para contar como melhoria. */
+    private static final double MIN_DELTA = 1e-4;
 
     /**
      * Classe utilitária: não é instanciável.
@@ -49,52 +61,64 @@ public final class Experiments {
      * @pos {@code results.csv}, {@code summary.csv}, {@code weights.csv} e {@code mse.csv} são (re)escritos.
      */
     public static void main(String[] args) throws Exception {
-        double[][] x = CsvUtils.clip01(CsvUtils.readMatrix("data/dataset.csv"));
-        double[] t = CsvUtils.encodeLabels(CsvUtils.readLabels("data/labels.csv"));
+        double[][] images = CsvUtils.clip01(CsvUtils.readMatrix("data/dataset.csv"));
+        double[] targets = CsvUtils.encodeLabels(CsvUtils.readLabels("data/labels.csv"));
 
         int[] seeds = {1, 2, 3, 4, 5};
         int[] copies = {0, 5, 10};
         double[] rates = {0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0};
-        double[] decays = {1, 10, 100};
-
+        double[] decays = {10, 100, 1e6};
 
         List<Run> runs = new ArrayList<>();
 
         // divisão treino/validação feita uma vez: todos os treinos usam a mesma validação
-        int[][] split = CsvUtils.trainValidationSplit(x.length, 0.8, new Random(42));
-        double[][] xTr = CsvUtils.selectRows(x, split[0]);
-        double[] tTr = CsvUtils.selectRows(t, split[0]);
-        double[][] xVal = CsvUtils.selectRows(x, split[1]);
-        double[] tVal = CsvUtils.selectRows(t, split[1]);
+        int[][] split = CsvUtils.trainValidationSplit(images.length, 0.8, new Random(42));
+        double[][] trainImages = CsvUtils.selectRows(images, split[0]);
+        double[] trainTargets = CsvUtils.selectRows(targets, split[0]);
+        double[][] validationImages = CsvUtils.selectRows(images, split[1]);
+        double[] validationTargets = CsvUtils.selectRows(targets, split[1]);
+
+        // validação aumentada: só para medir robustez, nunca para escolher nem treinar
+        int valCopies = 3;
+        Random valAugRandom = new Random(7);
+        double[][] validationImagesAug = new double[validationImages.length * valCopies][];
+        double[] validationTargetsAug = new double[validationImages.length * valCopies];
+        for (int copy = 0; copy < valCopies; copy++) {
+            for (int i = 0; i < validationImages.length; i++) {
+                validationImagesAug[copy * validationImages.length + i] = Augmentation.randomAugment(validationImages[i], valAugRandom);
+                validationTargetsAug[copy * validationImages.length + i] = validationTargets[i];
+            }
+        }
 
         // abrir results.csv e escrever o cabeçalho
         try (PrintWriter results = new PrintWriter("results.csv", StandardCharsets.UTF_8)) {
-            results.println("seed,copias,a0,decayEpocas,valMSE,valAcc,melhorEpoca,epocas");
+            results.println("seed,copias,a0,decayEpocas,valMSE,valAcc,valAugAcc,melhorEpoca,epocas");
 
             for (int seed : seeds) {
                 for (int k : copies) {
+                    Random augRandom = new Random(seed * 1000L + 1);
                     Augmentation.Dataset train = (k == 0)
-                            ? new Augmentation.Dataset(xTr, tTr)
-                            : Augmentation.augmentDataset(xTr, tTr, k, new Random(seed));
+                            ? new Augmentation.Dataset(trainImages, trainTargets)
+                            : Augmentation.augmentDataset(trainImages, trainTargets, k, augRandom);
 
 
                     for (double a0 : rates) {
                         for (double de : decays) {
+                            Random trainRandom = new Random(seed * 1000L + 2);
                             double c = de * train.x.length;   // épocas -> atualizações
-                            Trainer trainer = new Trainer(a0, c, 200, 10, 1e-5);
-                            Trainer.TrainingResult r = trainer.train(train, xVal, tVal, new Random(seed));
+                            Trainer trainer = new Trainer(a0, c, MAX_EPOCHS, PATIENCE, MIN_DELTA);
+                            Trainer.TrainingResult r = trainer.train(train, validationImages, validationTargets, trainRandom);
 
                             double valMse = r.validationMse()[r.bestEpoch()];
-                            double acc = accuracy(r.best(), xVal, tVal);
-
-
-                            // ... escrever a linha em results.csv
-                            results.printf(Locale.ROOT, "%d,%d,%s,%s,%.6f,%.4f,%d,%d%n",
-                                    seed, k, a0, de, valMse, acc,
+                            double acc = accuracy(r.best(), validationImages, validationTargets);
+                            double augAcc = accuracy(r.best(), validationImagesAug, validationTargetsAug);
+                            
+                            results.printf(Locale.ROOT, "%d,%d,%s,%s,%.6f,%.4f,%.4f,%d,%d%n",
+                                    seed, k, a0, de, valMse, acc, augAcc,
                                     r.bestEpoch() + 1, r.trainMse().length);
 
                             // guardar todos os treinos para os agrupar no fim
-                            runs.add(new Run(seed, k, a0, de, valMse, acc, r));
+                            runs.add(new Run(seed, k, a0, de, valMse, acc, augAcc, r));
                         }
                     }
                 }
@@ -111,16 +135,18 @@ public final class Experiments {
         configs.sort(Comparator.comparingDouble(Experiments::meanMse));
 
         try (PrintWriter summary = new PrintWriter("summary.csv", StandardCharsets.UTF_8)) {
-            summary.println("copias,a0,decayEpocas,valMSE_media,valMSE_dp,valAcc_media,valAcc_dp");
+            summary.println("copias,a0,decayEpocas,valMSE_media,valMSE_dp,valAcc_media,valAcc_dp,valAugAcc_media,valAugAcc_dp");
             for (List<Run> g : configs) {
                 double[] mse = new double[g.size()];
                 double[] acc = new double[g.size()];
+                double[] augAcc = new double[g.size()];
                 for (int i = 0; i < g.size(); i++) {
                     mse[i] = g.get(i).valMse();
                     acc[i] = g.get(i).acc();
+                    augAcc[i] = g.get(i).augAcc();
                 }
-                summary.printf(Locale.ROOT, "%s,%.6f,%.6f,%.4f,%.4f%n",
-                        g.get(0).config(), mean(mse), std(mse), mean(acc), std(acc));
+                summary.printf(Locale.ROOT, "%s,%.6f,%.6f,%.4f,%.4f,%.4f,%.4f%n",
+                        g.get(0).config(), mean(mse), std(mse), mean(acc), std(acc), mean(augAcc), std(augAcc));
             }
         }
 
@@ -155,22 +181,22 @@ public final class Experiments {
     /**
      * Calcula a exatidão de um perceptrão com limiar 0.5.
      *
-     * @param p Perceptrão a avaliar. Não pode ser nulo.
-     * @param x Imagens, uma por linha. Não pode ser nulo.
-     * @param t Rótulos (0 ou 1), um por imagem. Não pode ser nulo.
+     * @param p       Perceptrão a avaliar. Não pode ser nulo.
+     * @param images  Imagens, uma por linha. Não pode ser nulo.
+     * @param targets Rótulos (0 ou 1), um por imagem. Não pode ser nulo.
      * @return A fração de imagens bem classificadas, em [0, 1].
-     * @pre p != null &amp;&amp; x != null &amp;&amp; t != null
-     * @pre x.length == t.length &amp;&amp; x.length > 0
+     * @pre p != null &amp;&amp; images != null &amp;&amp; targets != null
+     * @pre images.length == targets.length &amp;&amp; images.length > 0
      * @pos O perceptrão, as imagens e os rótulos não são modificados.
      */
-    private static double accuracy(Perceptron p, double[][] x, double[] t) {
+    private static double accuracy(Perceptron p, double[][] images, double[] targets) {
         int correct = 0;
-        for (int i = 0; i < x.length; i++) {
-            if (p.classify(x[i], 0.5) == (int) t[i]) {
+        for (int i = 0; i < images.length; i++) {
+            if (p.classify(images[i], 0.5) == (int) targets[i]) {
                 correct++;
             }
         }
-        return (double) correct / x.length;
+        return (double) correct / images.length;
     }
 
     /**
@@ -235,9 +261,10 @@ public final class Experiments {
      * @param de     Número de épocas ao fim do qual a taxa fica a metade.
      * @param valMse MSE de validação na melhor época.
      * @param acc    Exatidão de validação do melhor perceptrão, em [0, 1].
+     * @param augAcc Exatidão do melhor perceptrão na validação aumentada, em [0, 1].
      * @param result Resultado completo devolvido pelo {@link Trainer}.
      */
-    private record Run(int seed, int copies, double a0, double de, double valMse, double acc,
+    private record Run(int seed, int copies, double a0, double de, double valMse, double acc, double augAcc,
                        Trainer.TrainingResult result) {
         /**
          * Identifica a configuração deste treino, sem a seed.
