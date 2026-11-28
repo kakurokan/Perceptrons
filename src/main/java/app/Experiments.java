@@ -6,6 +6,7 @@ import utils.Augmentation;
 import utils.CsvUtils;
 
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
@@ -33,30 +34,10 @@ import java.util.*;
  */
 public final class Experiments {
 
-    /** Classe utilitária: não é instanciável. */
-    private Experiments() {
-    }
-
     /**
-     * Resultado de um treino.
-     *
-     * @param seed   Seed usada na aumentação e no treino.
-     * @param copies Número de cópias aumentadas por imagem de treino (0 = sem aumentação).
-     * @param a0     Taxa de aprendizagem inicial.
-     * @param de     Número de épocas ao fim do qual a taxa fica a metade.
-     * @param valMse MSE de validação na melhor época.
-     * @param acc    Exatidão de validação do melhor perceptrão, em [0, 1].
-     * @param result Resultado completo devolvido pelo {@link Trainer}.
+     * Classe utilitária: não é instanciável.
      */
-    private record Run(int seed, int copies, double a0, double de, double valMse, double acc, Trainer.TrainingResult result) {
-        /**
-         * Identifica a configuração deste treino, sem a seed.
-         *
-         * @return {@code "copies,a0,de"}, usado para agrupar treinos e como prefixo das linhas de {@code summary.csv}.
-         */
-        String config() {
-            return copies + "," + a0 + "," + de;
-        }
+    private Experiments() {
     }
 
     /**
@@ -87,7 +68,7 @@ public final class Experiments {
         double[] tVal = CsvUtils.selectRows(t, split[1]);
 
         // abrir results.csv e escrever o cabeçalho
-        try (PrintWriter results = new PrintWriter("results.csv", "UTF-8")) {
+        try (PrintWriter results = new PrintWriter("results.csv", StandardCharsets.UTF_8)) {
             results.println("seed,copias,a0,decayEpocas,valMSE,valAcc,melhorEpoca,epocas");
 
             for (int seed : seeds) {
@@ -121,15 +102,15 @@ public final class Experiments {
         }
 
         Map<String, List<Run>> byConfig = new LinkedHashMap<>();
-        for(Run run: runs){
+        for (Run run : runs) {
             byConfig.computeIfAbsent(run.config(), k -> new ArrayList<>()).add(run);
         }
 
 
         List<List<Run>> configs = new ArrayList<>(byConfig.values());
-        configs.sort((g1, g2) -> Double.compare(meanMse(g1), meanMse(g2)));
+        configs.sort(Comparator.comparingDouble(Experiments::meanMse));
 
-        try (PrintWriter summary = new PrintWriter("summary.csv", "UTF-8")) {
+        try (PrintWriter summary = new PrintWriter("summary.csv", StandardCharsets.UTF_8)) {
             summary.println("copias,a0,decayEpocas,valMSE_media,valMSE_dp,valAcc_media,valAcc_dp");
             for (List<Run> g : configs) {
                 double[] mse = new double[g.size()];
@@ -157,7 +138,7 @@ public final class Experiments {
         CsvUtils.writeWeights("weights.csv", r.best().getWeights());
 
         // escrever mse.csv a partir do melhor treino
-        try (PrintWriter mse = new PrintWriter("mse.csv", "UTF-8")) {
+        try (PrintWriter mse = new PrintWriter("mse.csv", StandardCharsets.UTF_8)) {
             mse.println("epoca,mseTreino,mseValidacao");
             for (int e = 0; e < r.trainMse().length; e++) {
                 mse.printf(Locale.ROOT, "%d,%.6f,%.6f%n",
@@ -243,5 +224,28 @@ public final class Experiments {
             sum += (a - m) * (a - m);
         }
         return Math.sqrt(sum / (v.length - 1));
+    }
+
+    /**
+     * Resultado de um treino.
+     *
+     * @param seed   Seed usada na aumentação e no treino.
+     * @param copies Número de cópias aumentadas por imagem de treino (0 = sem aumentação).
+     * @param a0     Taxa de aprendizagem inicial.
+     * @param de     Número de épocas ao fim do qual a taxa fica a metade.
+     * @param valMse MSE de validação na melhor época.
+     * @param acc    Exatidão de validação do melhor perceptrão, em [0, 1].
+     * @param result Resultado completo devolvido pelo {@link Trainer}.
+     */
+    private record Run(int seed, int copies, double a0, double de, double valMse, double acc,
+                       Trainer.TrainingResult result) {
+        /**
+         * Identifica a configuração deste treino, sem a seed.
+         *
+         * @return {@code "copies,a0,de"}, usado para agrupar treinos e como prefixo das linhas de {@code summary.csv}.
+         */
+        String config() {
+            return copies + "," + a0 + "," + de;
+        }
     }
 }
