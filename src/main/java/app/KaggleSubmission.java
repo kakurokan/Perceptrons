@@ -1,43 +1,50 @@
-package demo;
+package app;
 
 import perceptron.Perceptron;
 import utils.Augmentation;
 import utils.CsvUtils;
 
 /**
- * Kaggle submission of Problem 4 (Perceptron for 3 or 8).
- *
- * <p>This program does not train. It loads the weights of the best perceptron (chosen in the
- * experiments and saved with {@link CsvUtils#writeWeights}), classifies every image of
- * {@code evalX.csv} and writes the submission file with header {@code id,label}, where
- * {@code id} is the row index in {@code evalX.csv} (starting at 0) and {@code label} is
- * 0 (digit 3) or 1 (digit 8), obtained by thresholding the perceptron output at 0.5.</p>
- *
- * <p>Usage:</p>
+ * Submissão ao Kaggle do Problema 4 (perceptrão que distingue o dígito 3 do 8).
+ * <p>
+ * Este programa não treina. Carrega os pesos do melhor perceptrão (escolhido em
+ * {@link Experiments} e guardado com {@link CsvUtils#writeWeights}), classifica todas as
+ * imagens de {@code evalX.csv} e escreve o ficheiro de submissão com cabeçalho
+ * {@code id,label}, onde {@code id} é o índice da linha em {@code evalX.csv} (a começar em 0)
+ * e {@code label} é 0 (dígito 3) ou 1 (dígito 8), obtido com limiar 0.5 na saída do perceptrão.
+ * <p>
+ * Uso:
  * <pre>
- * java -cp out demo.KaggleSubmission weights.csv data/evalX.csv submission.csv
+ * java -cp out app.KaggleSubmission weights.csv data/evalX.csv submission.csv
  * </pre>
- *
- * <p>Test before the Kaggle window, using the labelled data as if it were the evaluation set
- * (the fourth argument is optional and only used to print the accuracy):</p>
+ * Para testar antes da janela do Kaggle, usa-se o conjunto rotulado como se fosse o de
+ * avaliação (o quarto argumento é opcional e só serve para mostrar a exatidão):
  * <pre>
- * java -cp out demo.KaggleSubmission weights.csv data/dataset.csv test.csv data/labels.csv
+ * java -cp out app.KaggleSubmission weights.csv data/dataset.csv test.csv data/labels.csv
  * </pre>
  */
 public final class KaggleSubmission {
 
-    /** Number of weights: one per pixel plus w0. */
+    /** Número de pesos do perceptrão: um por pixel mais o bias. */
     private static final int N_WEIGHTS = Augmentation.SIZE + 1;
 
+    /** Classe utilitária: não é instanciável. */
     private KaggleSubmission() {
     }
 
     /**
-     * Entry point.
+     * Ponto de entrada: carrega os pesos, classifica as imagens de avaliação e escreve a submissão.
      *
-     * @param args weights file, evaluation file, output file and, optionally, a label file
-     *             to check the accuracy when testing with labelled data
-     * @throws Exception if a file cannot be read or written
+     * @param args Argumentos opcionais, por ordem: ficheiro de pesos (por omissão {@code weights.csv}),
+     *             ficheiro de avaliação ({@code data/evalX.csv}), ficheiro de saída
+     *             ({@code submission.csv}) e ficheiro de rótulos para calcular a exatidão (nenhum).
+     * @throws Exception                se um ficheiro não puder ser lido ou escrito.
+     * @throws IllegalArgumentException se o ficheiro de pesos não tiver {@code Augmentation.SIZE + 1}
+     *                                  pesos, se uma imagem não tiver {@code Augmentation.SIZE} pixels
+     *                                  ou se o número de rótulos for diferente do número de imagens.
+     * @pre args != null
+     * @pos O ficheiro de saída contém uma linha {@code id,label} por imagem, com label em {0, 1}.
+     * @pos Os ficheiros de entrada não são modificados.
      */
     public static void main(String[] args) throws Exception {
         String weightsPath = args.length > 0 ? args[0] : "weights.csv";
@@ -91,11 +98,14 @@ public final class KaggleSubmission {
     }
 
     /**
-     * Checks that every row has exactly 400 pixels (for example, that the file has no id column).
+     * Verifica que todas as imagens têm exatamente {@code Augmentation.SIZE} pixels
+     * (por exemplo, que o ficheiro não tem uma coluna de id).
      *
-     * @param x    images
-     * @param path file name, for the error message
-     * @throws IllegalArgumentException if a row does not have 400 values
+     * @param x    Imagens, uma por linha. Não pode ser nulo.
+     * @param path Nome do ficheiro, usado na mensagem de erro.
+     * @throws IllegalArgumentException se alguma linha não tiver {@code Augmentation.SIZE} valores.
+     * @pre x != null
+     * @pos As imagens não são modificadas.
      */
     private static void checkSize(double[][] x, String path) {
         for (int i = 0; i < x.length; i++) {

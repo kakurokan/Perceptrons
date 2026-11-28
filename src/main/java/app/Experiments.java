@@ -1,4 +1,4 @@
-package demo;
+package app;
 
 import perceptron.Perceptron;
 import perceptron.Trainer;
@@ -8,14 +8,65 @@ import utils.CsvUtils;
 import java.io.PrintWriter;
 import java.util.*;
 
+/**
+ * Experiências de treino do perceptrão que distingue o dígito 3 do 8.
+ * <p>
+ * Divide {@code data/dataset.csv} uma única vez em treino (80%) e validação (20%) e treina um
+ * perceptrão para cada combinação de seed, número de cópias aumentadas por imagem, taxa de
+ * aprendizagem inicial e decaimento (em épocas). Todos os treinos usam a mesma validação.
+ * <p>
+ * Ficheiros escritos no diretório atual:
+ * <ul>
+ *   <li>{@code results.csv}: uma linha por treino;</li>
+ *   <li>{@code summary.csv}: média e desvio-padrão de cada configuração sobre as seeds,
+ *       ordenado por MSE de validação médio;</li>
+ *   <li>{@code weights.csv}: pesos do melhor perceptrão, lidos depois por {@link KaggleSubmission};</li>
+ *   <li>{@code mse.csv}: MSE de treino e de validação por época do melhor treino.</li>
+ * </ul>
+ * A melhor configuração é a de menor MSE de validação médio; dentro dela, escolhe-se a seed
+ * com menor MSE de validação.
+ * <p>
+ * Uso:
+ * <pre>
+ * java -cp out app.Experiments
+ * </pre>
+ */
 public final class Experiments {
 
+    /** Classe utilitária: não é instanciável. */
+    private Experiments() {
+    }
+
+    /**
+     * Resultado de um treino.
+     *
+     * @param seed   Seed usada na aumentação e no treino.
+     * @param copies Número de cópias aumentadas por imagem de treino (0 = sem aumentação).
+     * @param a0     Taxa de aprendizagem inicial.
+     * @param de     Número de épocas ao fim do qual a taxa fica a metade.
+     * @param valMse MSE de validação na melhor época.
+     * @param acc    Exatidão de validação do melhor perceptrão, em [0, 1].
+     * @param result Resultado completo devolvido pelo {@link Trainer}.
+     */
     private record Run(int seed, int copies, double a0, double de, double valMse, double acc, Trainer.TrainingResult result) {
+        /**
+         * Identifica a configuração deste treino, sem a seed.
+         *
+         * @return {@code "copies,a0,de"}, usado para agrupar treinos e como prefixo das linhas de {@code summary.csv}.
+         */
         String config() {
             return copies + "," + a0 + "," + de;
         }
     }
 
+    /**
+     * Ponto de entrada: corre todas as experiências e escreve os ficheiros de resultados.
+     *
+     * @param args Ignorados.
+     * @throws Exception se um ficheiro não puder ser lido ou escrito.
+     * @pre {@code data/dataset.csv} e {@code data/labels.csv} existem e têm o mesmo número de linhas.
+     * @pos {@code results.csv}, {@code summary.csv}, {@code weights.csv} e {@code mse.csv} são (re)escritos.
+     */
     public static void main(String[] args) throws Exception {
         double[][] x = CsvUtils.clip01(CsvUtils.readMatrix("data/dataset.csv"));
         double[] t = CsvUtils.encodeLabels(CsvUtils.readLabels("data/labels.csv"));
@@ -119,6 +170,18 @@ public final class Experiments {
         System.out.printf(Locale.ROOT, "melhor seed dessa configuracao: %d, valMSE=%.4f, melhor epoca %d%n",
                 best.seed(), best.valMse(), r.bestEpoch() + 1);
     }
+
+    /**
+     * Calcula a exatidão de um perceptrão com limiar 0.5.
+     *
+     * @param p Perceptrão a avaliar. Não pode ser nulo.
+     * @param x Imagens, uma por linha. Não pode ser nulo.
+     * @param t Rótulos (0 ou 1), um por imagem. Não pode ser nulo.
+     * @return A fração de imagens bem classificadas, em [0, 1].
+     * @pre p != null &amp;&amp; x != null &amp;&amp; t != null
+     * @pre x.length == t.length &amp;&amp; x.length > 0
+     * @pos O perceptrão, as imagens e os rótulos não são modificados.
+     */
     private static double accuracy(Perceptron p, double[][] x, double[] t) {
         int correct = 0;
         for (int i = 0; i < x.length; i++) {
@@ -129,7 +192,14 @@ public final class Experiments {
         return (double) correct / x.length;
     }
 
-    /** Media do MSE**/
+    /**
+     * Calcula a média do MSE de validação de um grupo de treinos.
+     *
+     * @param g Treinos de uma mesma configuração. Não pode ser nulo nem vazio.
+     * @return A média de {@code valMse()} dos treinos.
+     * @pre g != null &amp;&amp; !g.isEmpty()
+     * @pos A lista não é modificada.
+     */
     private static double meanMse(List<Run> g) {
         double sum = 0;
         for (Run run : g) {
@@ -138,6 +208,14 @@ public final class Experiments {
         return sum / g.size();
     }
 
+    /**
+     * Calcula a média aritmética de um vetor.
+     *
+     * @param v Valores. Não pode ser nulo nem vazio.
+     * @return A média dos valores.
+     * @pre v != null &amp;&amp; v.length > 0
+     * @pos O vetor não é modificado.
+     */
     private static double mean(double[] v) {
         double sum = 0;
         for (double a : v) {
@@ -146,7 +224,15 @@ public final class Experiments {
         return sum / v.length;
     }
 
-    /** Desvio-padrão amostral (divide por n - 1). */
+    /**
+     * Calcula o desvio-padrão amostral de um vetor (divide por n - 1).
+     *
+     * @param v Valores. Não pode ser nulo.
+     * @return O desvio-padrão amostral, ou 0 se v tiver menos de 2 valores.
+     * @pre v != null
+     * @pos std(v) >= 0
+     * @pos O vetor não é modificado.
+     */
     private static double std(double[] v) {
         if (v.length < 2) {
             return 0;
